@@ -409,6 +409,19 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);min
 .admin-top-title{font-family:'Lora',serif;font-size:1.1rem;font-weight:600;}
 .signout-btn{font-size:0.75rem;font-weight:500;color:var(--text2);background:var(--bg3);border:1px solid var(--border);padding:0.35rem 0.85rem;border-radius:6px;cursor:pointer;font-family:'DM Sans',sans-serif;transition:all 0.15s;}
 .signout-btn:hover{color:var(--red);border-color:var(--red);}
+
+/* Sign out button inside each tab pane */
+.btn-signout-tab{
+  display:block;width:100%;margin-top:1.25rem;
+  background:transparent;
+  border:1.5px solid var(--border2);
+  color:var(--text2);
+  padding:0.72rem;border-radius:7px;cursor:pointer;
+  font-family:'DM Sans',sans-serif;font-size:0.85rem;font-weight:500;
+  transition:all 0.2s;
+  text-align:center;
+}
+.btn-signout-tab:hover{border-color:var(--red);color:var(--red);background:rgba(192,57,43,0.06);}
 .tab-bar{display:flex;border-bottom:1px solid var(--border);flex-shrink:0;}
 .tab{font-size:0.8rem;font-weight:500;padding:0.9rem 1.2rem;background:none;border:none;border-bottom:2px solid transparent;cursor:pointer;color:var(--text2);font-family:'DM Sans',sans-serif;transition:all 0.15s;white-space:nowrap;}
 .tab:hover{color:var(--text);}
@@ -845,11 +858,13 @@ input, select, textarea { font-size: 16px !important; } /* prevents iOS zoom on 
           </div>
         </div>
         <button class="btn-full" id="u-btn" onclick="doUpload()">Add to Library</button>
+        <button class="btn-signout-tab" onclick="signOut()">🚪 Sign Out</button>
       </div>
 
       <!-- MANAGE -->
       <div id="pane-manage" style="display:none;">
         <div class="mgmt-list" id="mgmt-list"></div>
+        <button class="btn-signout-tab" onclick="signOut()" style="margin-top:1.5rem;">🚪 Sign Out</button>
       </div>
 
       <!-- ACCOUNT -->
@@ -889,6 +904,7 @@ input, select, textarea { font-size: 16px !important; } /* prevents iOS zoom on 
             <button class="btn-danger-full" onclick="confirmAction('Reset credentials to default?','This will sign you out and restore admin / library123.',resetCredentials)">Reset to Defaults</button>
           </div>
         </div>
+        <button class="btn-signout-tab" onclick="signOut()">🚪 Sign Out</button>
       </div>
 
     </div>
@@ -966,34 +982,32 @@ function saveCreds(c) { localStorage.setItem('libra_creds', JSON.stringify(c)); 
 
 // ════════════════════════════════
 // FIREBASE CONFIG
-// Replace this with your own Firebase project config.
-// Get it from: Firebase Console → Project Settings → Your Apps → Web App → SDK setup
+// To connect a real database, replace null below with your Firebase config object.
+// Get it from: Firebase Console → Project Settings → Your Apps → Web App
+// Example:
+// const FIREBASE_CONFIG = {
+//   apiKey: "AIzaSy...",
+//   authDomain: "your-project.firebaseapp.com",
+//   projectId: "your-project-id",
+//   storageBucket: "your-project.appspot.com",
+//   messagingSenderId: "123456789",
+//   appId: "1:123:web:abc"
+// };
 // ════════════════════════════════
-const FIREBASE_CONFIG = PASTE_YOUR_FIREBASE_CONFIG_HERE;
-/*
-  Example — replace the whole object above with yours:
-  const FIREBASE_CONFIG = {
-    apiKey: "AIzaSy...",
-    authDomain: "your-project.firebaseapp.com",
-    projectId: "your-project-id",
-    storageBucket: "your-project.appspot.com",
-    messagingSenderId: "123456789",
-    appId: "1:123:web:abc"
-  };
-*/
+const FIREBASE_CONFIG = null; // ← Replace null with your config object when ready
 
 let fbApp, fbDb, fbStorage, fbConfigured = false;
 
 function initFirebase() {
   try {
-    if(typeof FIREBASE_CONFIG === 'undefined' || !FIREBASE_CONFIG.apiKey) throw new Error('Not configured');
+    if(!FIREBASE_CONFIG || !FIREBASE_CONFIG.apiKey) throw new Error('Not configured');
     fbApp     = firebase.initializeApp(FIREBASE_CONFIG);
     fbDb      = firebase.firestore();
     fbStorage = firebase.storage();
     fbConfigured = true;
   } catch(e) {
     document.getElementById('setup-banner').style.display = 'block';
-    console.warn('Firebase not configured:', e.message);
+    console.warn('Firebase not configured — running in offline mode:', e.message);
   }
 }
 
