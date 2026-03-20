@@ -169,9 +169,10 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);min
 
 /* ── BOOKS GRID ── */
 .books-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(175px,1fr));gap:1.5rem;}
-.book-card{background:var(--bg2);border:1px solid var(--border);border-radius:10px;overflow:hidden;cursor:pointer;transition:transform 0.2s,box-shadow 0.2s;animation:fadeUp 0.4s ease both;}
+.book-card{background:var(--bg2);border:1px solid var(--border);border-radius:10px;overflow:hidden;cursor:pointer;transition:transform 0.2s,box-shadow 0.2s,border-color 0.2s;animation:fadeUp 0.4s ease both;-webkit-tap-highlight-color:rgba(0,0,0,0.06);}
 @keyframes fadeUp{from{opacity:0;transform:translateY(16px);}to{opacity:1;transform:translateY(0);}}
-.book-card:hover{transform:translateY(-4px);box-shadow:0 8px 24px rgba(0,0,0,0.1);}
+.book-card:hover{transform:translateY(-4px);box-shadow:0 8px 24px rgba(0,0,0,0.1);border-color:var(--accent);}
+.book-card:active{transform:scale(0.97);box-shadow:none;}
 .cover-wrap{width:100%;aspect-ratio:2/3;overflow:hidden;position:relative;background:var(--bg3);}
 .cover-wrap img{width:100%;height:100%;object-fit:cover;display:block;}
 .cover-ph{width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:1.25rem;text-align:center;background:linear-gradient(160deg,#e8edf5 0%,#d8e4f0 100%);}
@@ -185,8 +186,7 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);min
 .card-title{font-family:'Lora',serif;font-size:0.9rem;font-weight:600;color:var(--text);line-height:1.35;margin-bottom:0.3rem;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;}
 .card-author{font-size:0.75rem;color:var(--text2);margin-bottom:0.4rem;}
 .card-genre{display:inline-block;font-size:0.65rem;font-weight:500;letter-spacing:0.04em;text-transform:uppercase;color:var(--accent);background:var(--accent-light);padding:2px 8px;border-radius:4px;}
-.read-btn{display:block;width:100%;margin-top:0.7rem;background:transparent;border:1.5px solid var(--border2);color:var(--text2);font-family:'DM Sans',sans-serif;font-size:0.75rem;font-weight:500;padding:0.4rem;border-radius:6px;cursor:pointer;transition:all 0.15s;text-align:center;}
-.read-btn:hover{background:var(--accent);color:white;border-color:var(--accent);}
+.card-read-hint{font-size:0.72rem;font-weight:600;color:var(--accent);margin-top:0.6rem;letter-spacing:0.02em;opacity:0.8;}
 
 /* ── EMPTY STATE ── */
 .empty{grid-column:1/-1;text-align:center;padding:5rem 2rem;}
@@ -413,7 +413,19 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);min
 .tab{font-size:0.8rem;font-weight:500;padding:0.9rem 1.2rem;background:none;border:none;border-bottom:2px solid transparent;cursor:pointer;color:var(--text2);font-family:'DM Sans',sans-serif;transition:all 0.15s;white-space:nowrap;}
 .tab:hover{color:var(--text);}
 .tab.on{color:var(--accent);border-bottom-color:var(--accent);}
-.tab-body{flex:1;overflow-y:auto;padding:1.5rem;}
+/* ── ADMIN MODAL special fix for flex column layout ── */
+#admin-overlay .modal {
+  display: flex !important;
+  flex-direction: column !important;
+  overflow: hidden;
+}
+.tab-body {
+  flex: 1;
+  min-height: 0;        /* critical: allows flex child to scroll */
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  padding: 1.5rem;
+}
 
 /* ── MANAGE LIST ── */
 .mgmt-list{display:flex;flex-direction:column;gap:0.75rem;}
@@ -539,7 +551,6 @@ input, select, textarea { font-size: 16px !important; } /* prevents iOS zoom on 
   /* ── Filter + grid ── */
   .main { padding: 1.25rem 1rem; }
   .books-grid { grid-template-columns: repeat(2, 1fr); gap: 0.85rem; }
-  .read-btn { font-size: 0.72rem; padding: 0.45rem; min-height: 36px; }
 
   /* ── All modals: full-screen on phone ── */
   .overlay { padding: 0; align-items: flex-end; }
@@ -585,7 +596,12 @@ input, select, textarea { font-size: 16px !important; } /* prevents iOS zoom on 
   .page-info { font-size: 0.75rem; min-width: 64px; }
   .sep { display: none; } /* hide visual separators to save space */
 
-  /* ── Admin modal ── */
+  /* ── Admin modal — proper bottom sheet ── */
+  #admin-overlay .modal {
+    height: 92vh !important;
+    max-height: 92vh !important;
+    border-radius: 16px 16px 0 0 !important;
+  }
   .admin-top { padding: 1rem 1.1rem; }
   .tab { padding: 0.85rem 0.75rem; font-size: 0.7rem; }
   .tab-body { padding: 1.1rem; }
@@ -1061,7 +1077,7 @@ function renderBooks() {
     const bm = getBookmark(b.id);
     const lastPg   = bm?.lastPage   || null;
     const manualPg = bm?.manualPage || null;
-    return `<div class="book-card" style="animation-delay:${i*0.04}s">
+    return `<div class="book-card" data-read-id="${b.id}" style="animation-delay:${i*0.04}s">
       <div class="cover-wrap">
         ${b.coverUrl
           ? `<img src="${esc(b.coverUrl)}" alt="${esc(b.title)}" loading="lazy">`
@@ -1074,9 +1090,7 @@ function renderBooks() {
         <div class="card-title">${esc(b.title)}</div>
         <div class="card-author">${esc(b.author)}</div>
         ${b.genre?`<span class="card-genre">${esc(b.genre)}</span>`:''}
-        <button class="read-btn" data-read-id="${b.id}">
-          ${lastPg?'Continue Reading →':'Read Now →'}
-        </button>
+        <div class="card-read-hint">${lastPg?'▶ Continue Reading':'▶ Read Now'}</div>
       </div>
     </div>`;
   }).join('');
@@ -1085,8 +1099,8 @@ function renderBooks() {
 }
 
 document.getElementById('books-grid').addEventListener('click', e => {
-  const btn = e.target.closest('[data-read-id]');
-  if(btn) openReader(btn.dataset.readId);
+  const card = e.target.closest('[data-read-id]');
+  if(card) openReader(card.dataset.readId);
 });
 
 // ════════════════════════════════
