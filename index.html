@@ -10,6 +10,10 @@
 <title>Shelf of Moiz</title>
 <link href="https://fonts.googleapis.com/css2?family=Lora:ital,wght@0,400;0,600;1,400&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<!-- Firebase SDK -->
+<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-storage-compat.js"></script>
 <style>
 :root{
   --bg:#f7f6f3;--bg2:#ffffff;--bg3:#f0efe9;
@@ -273,12 +277,13 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);min
 
 /* Canvas wrap */
 .canvas-area{
-  flex:1;overflow-y:auto;overflow-x:hidden;
+  flex:1;overflow-y:auto;overflow-x:auto;   /* allow horizontal scroll when zoomed in */
   background:#3a3d40;
   display:flex;flex-direction:column;
   align-items:stretch;
   min-height:0;
   scroll-behavior:smooth;
+  -webkit-overflow-scrolling:touch;         /* smooth scroll on iOS */
 }
 #pages-container{
   display:flex;
@@ -286,7 +291,8 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);min
   align-items:center;
   gap:16px;
   padding:1.5rem 1.5rem 3rem;
-  width:100%;
+  width:max-content;      /* expands to hold wide canvases when zoomed in */
+  min-width:100%;
 }
 .page-wrap{
   display:flex;flex-direction:column;align-items:center;
@@ -302,8 +308,9 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);min
   display:block;
   box-shadow:0 4px 24px rgba(0,0,0,0.45);
   border-radius:2px;
-  max-width:100%;
+  /* NO max-width — canvas must be free to grow beyond screen width when zoomed */
   background:#fff;
+  touch-action:pan-y pinch-zoom;   /* let browser handle single-finger scroll, we handle pinch */
 }
 .pdf-loading{
   color:#ccc;font-size:0.9rem;padding:4rem 2rem;
@@ -630,6 +637,12 @@ input, select, textarea { font-size: 16px !important; } /* prevents iOS zoom on 
   </div>
 </div>
 
+<!-- Firebase setup notice (hidden once configured) -->
+<div id="setup-banner" style="display:none;background:#fff3cd;border-bottom:1px solid #ffc107;padding:0.75rem 2rem;font-size:0.82rem;color:#856404;text-align:center;">
+  ⚠️ <strong>Firebase not configured.</strong> Open the HTML file, find <code>PASTE_YOUR_FIREBASE_CONFIG_HERE</code> and replace it with your Firebase config.
+  <a href="https://console.firebase.google.com" target="_blank" style="color:#856404;font-weight:600;margin-left:0.5rem;">Open Firebase Console →</a>
+</div>
+
 <!-- HERO -->
 <div class="hero-strip">
   <div class="hero-eyebrow">Moiz's Personal Collection</div>
@@ -805,6 +818,16 @@ input, select, textarea { font-size: 16px !important; } /* prevents iOS zoom on 
           </div>
         </div>
         <div class="err-msg" id="u-err"></div>
+        <!-- Upload progress -->
+        <div id="upload-progress-wrap" style="display:none;margin-top:0.75rem;">
+          <div style="display:flex;justify-content:space-between;margin-bottom:0.3rem;">
+            <span style="font-size:0.78rem;color:var(--text2);" id="upload-status-text">Uploading…</span>
+            <span style="font-size:0.78rem;color:var(--accent);font-weight:600;" id="upload-pct">0%</span>
+          </div>
+          <div style="width:100%;height:6px;background:var(--border2);border-radius:3px;overflow:hidden;">
+            <div id="upload-progress-bar" style="height:100%;background:var(--accent);width:0%;transition:width 0.2s;border-radius:3px;"></div>
+          </div>
+        </div>
         <button class="btn-full" id="u-btn" onclick="doUpload()">Add to Library</button>
       </div>
 
@@ -926,37 +949,37 @@ function getCreds() {
 function saveCreds(c) { localStorage.setItem('libra_creds', JSON.stringify(c)); }
 
 // ════════════════════════════════
-// INDEXEDDB
+// FIREBASE CONFIG
+// Replace this with your own Firebase project config.
+// Get it from: Firebase Console → Project Settings → Your Apps → Web App → SDK setup
 // ════════════════════════════════
-let db;
-function openDB() {
-  return new Promise((res,rej) => {
-    const req = indexedDB.open('libra_v3', 1);
-    req.onupgradeneeded = e => {
-      const d = e.target.result;
-      if (!d.objectStoreNames.contains('meta'))  d.createObjectStore('meta',  {keyPath:'id'});
-      if (!d.objectStoreNames.contains('files')) d.createObjectStore('files', {keyPath:'id'});
-    };
-    req.onsuccess = e => { db = e.target.result; res(db); };
-    req.onerror   = () => rej(new Error('IndexedDB failed'));
-  });
+const FIREBASE_CONFIG = PASTE_YOUR_FIREBASE_CONFIG_HERE;
+/*
+  Example — replace the whole object above with yours:
+  const FIREBASE_CONFIG = {
+    apiKey: "AIzaSy...",
+    authDomain: "your-project.firebaseapp.com",
+    projectId: "your-project-id",
+    storageBucket: "your-project.appspot.com",
+    messagingSenderId: "123456789",
+    appId: "1:123:web:abc"
+  };
+*/
+
+let fbApp, fbDb, fbStorage, fbConfigured = false;
+
+function initFirebase() {
+  try {
+    if(typeof FIREBASE_CONFIG === 'undefined' || !FIREBASE_CONFIG.apiKey) throw new Error('Not configured');
+    fbApp     = firebase.initializeApp(FIREBASE_CONFIG);
+    fbDb      = firebase.firestore();
+    fbStorage = firebase.storage();
+    fbConfigured = true;
+  } catch(e) {
+    document.getElementById('setup-banner').style.display = 'block';
+    console.warn('Firebase not configured:', e.message);
+  }
 }
-const txPut = (store, obj) => new Promise((res,rej) => {
-  const r = db.transaction(store,'readwrite').objectStore(store).put(obj);
-  r.onsuccess = ()=>res(); r.onerror = ()=>rej(new Error('DB put failed'));
-});
-const txGet = (store, key) => new Promise((res,rej) => {
-  const r = db.transaction(store,'readonly').objectStore(store).get(key);
-  r.onsuccess = e => res(e.target.result||null); r.onerror = ()=>rej(new Error('DB get failed'));
-});
-const txGetAll = (store) => new Promise((res,rej) => {
-  const r = db.transaction(store,'readonly').objectStore(store).getAll();
-  r.onsuccess = e => res(e.target.result||[]); r.onerror = ()=>rej(new Error('DB getAll failed'));
-});
-const txDelete = (store, key) => new Promise((res,rej) => {
-  const r = db.transaction(store,'readwrite').objectStore(store).delete(key);
-  r.onsuccess = ()=>res(); r.onerror = ()=>rej(new Error('DB delete failed'));
-});
 
 // ════════════════════════════════
 // STATE
@@ -964,11 +987,22 @@ const txDelete = (store, key) => new Promise((res,rej) => {
 let books = [], isAdmin = false, currentGenre = 'all';
 let pdfDoc = null, currentPage = 1, zoomScale = 1.3, renderTask = null;
 let activeBookId = null;
-let pdfBytes = null;  // stored for download
+let activePdfUrl = null;  // Firebase Storage URL for active book
+let booksListener = null; // Firestore real-time unsubscribe handle
 
-async function loadBooks() {
-  books = await txGetAll('meta');
-  books.sort((a,b) => b.addedAt - a.addedAt);
+// Real-time listener — updates books on ALL devices instantly
+function loadBooks() {
+  if(!fbConfigured) return;
+  if(booksListener) booksListener(); // unsubscribe previous
+  const q = fbDb.collection('books').orderBy('addedAt','desc');
+  booksListener = q.onSnapshot(snap => {
+    books = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    buildFilters();
+    renderBooks();
+  }, err => {
+    console.error('Firestore error:', err);
+    showToast('Database error — check console', 'error');
+  });
 }
 
 // ════════════════════════════════
@@ -1029,8 +1063,8 @@ function renderBooks() {
     const manualPg = bm?.manualPage || null;
     return `<div class="book-card" style="animation-delay:${i*0.04}s">
       <div class="cover-wrap">
-        ${b.hasCover
-          ? `<img src="" data-cover-id="${b.id}" alt="${esc(b.title)}">`
+        ${b.coverUrl
+          ? `<img src="${esc(b.coverUrl)}" alt="${esc(b.title)}" loading="lazy">`
           : `<div class="cover-ph"><div class="icon">📖</div><div class="pt">${esc(b.title)}</div><div class="pa">${esc(b.author)}</div></div>`}
         ${i===0?'<span class="new-badge">New</span>':''}
         ${manualPg?`<span class="bm-badge" title="Bookmark: page ${manualPg}">🔖 p.${manualPg}</span>`:
@@ -1047,11 +1081,7 @@ function renderBooks() {
     </div>`;
   }).join('');
 
-  // Load covers
-  filtered.filter(b=>b.hasCover).forEach(async b => {
-    const row = await txGet('files','cover_'+b.id);
-    if(row) document.querySelectorAll(`[data-cover-id="${b.id}"]`).forEach(el=>el.src=row.dataUrl);
-  });
+  // Covers load via direct URL — no extra fetch needed
 }
 
 document.getElementById('books-grid').addEventListener('click', e => {
@@ -1065,9 +1095,10 @@ document.getElementById('books-grid').addEventListener('click', e => {
 async function openReader(id) {
   const b = books.find(x=>x.id===id);
   if(!b) return;
+  if(!b.pdfUrl) { showToast('PDF not available', 'error'); return; }
 
   activeBookId = id;
-  pdfBytes = null;
+  activePdfUrl = b.pdfUrl;
   document.getElementById('r-title').textContent  = b.title;
   document.getElementById('r-author').textContent = b.author;
 
@@ -1086,25 +1117,22 @@ async function openReader(id) {
   openOverlay('reader-overlay');
 
   try {
-    const row = await txGet('files', 'pdf_'+id);
-    if(!row||!row.buffer) throw new Error('PDF not found. Try re-uploading the book.');
+    // Fetch PDF bytes from Firebase Storage URL
+    loading.innerHTML = '<div class="spin"></div><span>Downloading PDF…</span>';
+    const resp = await fetch(b.pdfUrl);
+    if(!resp.ok) throw new Error(`Network error ${resp.status}`);
+    const buffer = await resp.arrayBuffer();
 
-    pdfBytes = row.buffer;
-    const arr = new Uint8Array(pdfBytes);
-    pdfDoc = await pdfjsLib.getDocument({data:arr}).promise;
+    pdfDoc = await pdfjsLib.getDocument({data: new Uint8Array(buffer)}).promise;
 
     loading.style.display = 'none';
     container.style.display = 'flex';
     document.getElementById('page-jump').max = pdfDoc.numPages;
     document.getElementById('zoom-pct').textContent = Math.round(zoomScale*100)+'%';
 
-    // Render all pages continuously
     await renderAllPages();
-
-    // Setup scroll tracking
     setupScrollTracking();
 
-    // Resume if needed
     const bm = getBookmark(id);
     if(bm && bm.lastPage > 1 && bm.lastPage <= pdfDoc.numPages) {
       showResumeBanner(bm.lastPage);
@@ -1174,16 +1202,11 @@ function lazyRenderSetup() {
 async function renderSingleCanvas(canvas, pageNum) {
   try {
     const page     = await pdfDoc.getPage(pageNum);
-    const area     = document.getElementById('canvas-area');
-    const avail    = Math.max(400, area.clientWidth - 56);
-    const baseVp   = page.getViewport({scale: 1});
-    const scale    = Math.min(zoomScale, avail / baseVp.width) * zoomScale / (zoomScale > 0 ? 1 : 1);
-    // Use zoomScale directly
-    const viewport = page.getViewport({scale: zoomScale});
+    const viewport = page.getViewport({ scale: zoomScale });
     const ctx      = canvas.getContext('2d');
     canvas.width   = viewport.width;
     canvas.height  = viewport.height;
-    await page.render({canvasContext: ctx, viewport}).promise;
+    await page.render({ canvasContext: ctx, viewport }).promise;
   } catch(e) {
     if(e.name !== 'RenderingCancelledException') console.error('Page render error:', e);
   }
@@ -1263,7 +1286,7 @@ async function jumpToPage() {
 }
 
 async function changeZoom(delta) {
-  zoomScale = Math.max(0.4, Math.min(4, +(zoomScale + delta).toFixed(2)));
+  zoomScale = Math.max(0.4, Math.min(5, +(zoomScale + delta).toFixed(2)));
   if(pdfDoc) await reRenderAllPages();
 }
 
@@ -1272,7 +1295,8 @@ async function resetZoom() {
   const page  = await pdfDoc.getPage(1);
   const area  = document.getElementById('canvas-area');
   const avail = area.clientWidth - 56;
-  zoomScale   = Math.max(0.4, Math.min(3, +(avail / page.getViewport({scale:1}).width).toFixed(2)));
+  // Fit-width scale — no upper cap, user can pinch/+ beyond this
+  zoomScale   = Math.max(0.4, +(avail / page.getViewport({scale:1}).width).toFixed(2));
   await reRenderAllPages();
 }
 
@@ -1414,21 +1438,20 @@ async function resumeReading(page) {
 // DOWNLOAD
 // ════════════════════════════════
 async function downloadBook() {
-  if(!activeBookId||!pdfBytes) { showToast('No book loaded'); return; }
+  if(!activeBookId || !activePdfUrl) { showToast('No book loaded'); return; }
   const b = books.find(x=>x.id===activeBookId);
   if(!b) return;
-
   try {
-    const blob = new Blob([pdfBytes], {type:'application/pdf'});
+    showToast('⬇️ Starting download…');
+    const resp = await fetch(activePdfUrl);
+    const blob = await resp.blob();
     const url  = URL.createObjectURL(blob);
     const a    = document.createElement('a');
     a.href     = url;
-    a.download = (b.title||'book').replace(/[^a-z0-9 _-]/gi,'_') + '.pdf';
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    setTimeout(()=>URL.revokeObjectURL(url), 3000);
-    showToast('⬇️ Download started', 'success');
+    a.download = (b.title||'book').replace(/[^a-z0-9 _\-]/gi,'_') + '.pdf';
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    setTimeout(()=>URL.revokeObjectURL(url), 5000);
+    showToast('✓ Download complete', 'success');
   } catch(err) {
     showToast('Download failed: '+err.message, 'error');
   }
@@ -1452,7 +1475,7 @@ function closeReader() {
   const area = document.getElementById('canvas-area');
   area.removeEventListener('scroll', onReaderScroll);
 
-  pdfDoc = null; pdfBytes = null; activeBookId = null;
+  pdfDoc = null; activePdfUrl = null; activeBookId = null;
   document.getElementById('pages-container').innerHTML = '';
   document.getElementById('pages-container').style.display = 'none';
 
@@ -1529,14 +1552,16 @@ function switchTab(name, btn) {
 // UPLOAD
 // ════════════════════════════════
 async function doUpload() {
-  const title  = document.getElementById('u-title').value.trim();
-  const author = document.getElementById('u-author').value.trim();
-  const genre  = document.getElementById('u-genre').value;
-  const desc   = document.getElementById('u-desc').value.trim();
+  if(!fbConfigured) { showToast('Firebase not configured — see setup banner', 'error'); return; }
+
+  const title    = document.getElementById('u-title').value.trim();
+  const author   = document.getElementById('u-author').value.trim();
+  const genre    = document.getElementById('u-genre').value;
+  const desc     = document.getElementById('u-desc').value.trim();
   const pdfFile  = document.getElementById('u-pdf').files[0];
   const coverFile= document.getElementById('u-cover').files[0];
-  const errEl  = document.getElementById('u-err');
-  errEl.style.display='none';
+  const errEl    = document.getElementById('u-err');
+  errEl.style.display = 'none';
 
   if(!title||!author||!genre){ errEl.textContent='Please fill Title, Author and Genre.'; errEl.style.display='block'; return; }
   if(!pdfFile){ errEl.textContent='Please select a PDF file.'; errEl.style.display='block'; return; }
@@ -1544,77 +1569,126 @@ async function doUpload() {
     errEl.textContent='Please select a valid PDF file.'; errEl.style.display='block'; return;
   }
 
-  const btn=document.getElementById('u-btn');
-  btn.textContent='Uploading…'; btn.disabled=true;
+  const btn     = document.getElementById('u-btn');
+  const progWrap= document.getElementById('upload-progress-wrap');
+  const progBar = document.getElementById('upload-progress-bar');
+  const progPct = document.getElementById('upload-pct');
+  const progTxt = document.getElementById('upload-status-text');
+
+  btn.disabled = true; btn.textContent = 'Uploading…';
+  progWrap.style.display = 'block';
 
   try {
-    const id = 'b'+Date.now().toString(36)+Math.random().toString(36).slice(2,5);
-    const pdfBuffer = await pdfFile.arrayBuffer();
-    await txPut('files',{id:'pdf_'+id, buffer:pdfBuffer});
+    const id = 'b' + Date.now().toString(36) + Math.random().toString(36).slice(2,5);
 
-    let hasCover=false;
-    if(coverFile){
-      const dataUrl = await new Promise((res,rej)=>{const r=new FileReader();r.onload=e=>res(e.target.result);r.onerror=rej;r.readAsDataURL(coverFile);});
-      await txPut('files',{id:'cover_'+id, dataUrl});
-      hasCover=true;
+    // 1. Upload PDF with progress
+    progTxt.textContent = 'Uploading PDF…';
+    const pdfRef  = fbStorage.ref(`books/${id}/book.pdf`);
+    const pdfTask = pdfRef.put(pdfFile, { contentType: 'application/pdf' });
+
+    const pdfUrl = await new Promise((res, rej) => {
+      pdfTask.on('state_changed',
+        snap => {
+          const pct = Math.round((snap.bytesTransferred / snap.totalBytes) * 80);
+          progBar.style.width = pct + '%';
+          progPct.textContent = pct + '%';
+        },
+        err => rej(err),
+        async () => res(await pdfTask.snapshot.ref.getDownloadURL())
+      );
+    });
+
+    // 2. Upload cover (if provided)
+    let coverUrl = null;
+    if(coverFile) {
+      progTxt.textContent = 'Uploading cover…';
+      progBar.style.width = '82%'; progPct.textContent = '82%';
+      const ext      = coverFile.name.split('.').pop();
+      const coverRef = fbStorage.ref(`books/${id}/cover.${ext}`);
+      await coverRef.put(coverFile, { contentType: coverFile.type });
+      coverUrl = await coverRef.getDownloadURL();
     }
 
-    const meta={id,title,author,genre,description:desc,hasCover,addedAt:Date.now()};
-    await txPut('meta',meta);
-    books.unshift(meta);
-    buildFilters(); renderBooks();
+    progBar.style.width = '92%'; progPct.textContent = '92%';
+    progTxt.textContent = 'Saving to database…';
 
-    ['u-title','u-author','u-desc'].forEach(x=>document.getElementById(x).value='');
+    // 3. Save metadata to Firestore
+    await fbDb.collection('books').doc(id).set({
+      title, author, genre,
+      description: desc,
+      pdfUrl,
+      coverUrl,
+      hasCover: !!coverUrl,
+      addedAt: firebase.firestore.FieldValue.serverTimestamp()
+    });
+
+    progBar.style.width = '100%'; progPct.textContent = '100%';
+    progTxt.textContent = 'Done!';
+
+    // Reset form
+    ['u-title','u-author','u-desc'].forEach(x => document.getElementById(x).value='');
     document.getElementById('u-genre').value='';
     document.getElementById('u-pdf').value='';   document.getElementById('pdf-lbl').textContent='';
     document.getElementById('u-cover').value=''; document.getElementById('cover-lbl').textContent='';
-    showToast('✓ Book added to the library','success');
-  } catch(err){
-    errEl.textContent='Error: '+err.message; errEl.style.display='block';
-    console.error(err);
+
+    showToast('✓ Book added — visible to all users now!', 'success');
+    setTimeout(()=>{ progWrap.style.display='none'; progBar.style.width='0%'; }, 2000);
+
+  } catch(err) {
+    errEl.textContent = 'Upload failed: ' + err.message;
+    errEl.style.display = 'block';
+    progWrap.style.display = 'none';
+    progBar.style.width = '0%';
+    console.error('Upload error:', err);
   }
-  btn.textContent='Add to Library'; btn.disabled=false;
+
+  btn.textContent = 'Add to Library'; btn.disabled = false;
 }
 
 // ════════════════════════════════
 // MANAGE
 // ════════════════════════════════
 function renderManage() {
-  const list=document.getElementById('mgmt-list');
+  const list = document.getElementById('mgmt-list');
   if(!books.length){
     list.innerHTML=`<p style="text-align:center;color:var(--text3);padding:3rem 0;font-size:0.85rem;">No books in the library yet.</p>`;
     return;
   }
-  list.innerHTML=books.map(b=>`
+  list.innerHTML = books.map(b => `
     <div class="mgmt-item">
-      ${b.hasCover?`<img class="mgmt-thumb" data-mcover="${b.id}" src="" alt="">`:
-        `<div class="mgmt-ph">📖</div>`}
+      ${b.coverUrl
+        ? `<img class="mgmt-thumb" src="${esc(b.coverUrl)}" alt="" loading="lazy">`
+        : `<div class="mgmt-ph">📖</div>`}
       <div class="mgmt-info">
         <div class="mgmt-title" title="${esc(b.title)}">${esc(b.title)}</div>
         <div class="mgmt-meta">${esc(b.author)} · ${esc(b.genre)}</div>
       </div>
       <button class="del-btn" data-del-id="${b.id}">Delete</button>
     </div>`).join('');
-
-  books.filter(b=>b.hasCover).forEach(async b=>{
-    const row=await txGet('files','cover_'+b.id);
-    if(row) document.querySelectorAll(`[data-mcover="${b.id}"]`).forEach(el=>el.src=row.dataUrl);
-  });
 }
 
 document.getElementById('mgmt-list').addEventListener('click', e=>{
-  const btn=e.target.closest('[data-del-id]'); if(!btn) return;
-  const id=btn.dataset.delId;
-  const b=books.find(x=>x.id===id); if(!b) return;
-  confirmAction(`Delete "${b.title}"?`, 'This will permanently remove the book and all its data.', async ()=>{
+  const btn = e.target.closest('[data-del-id]'); if(!btn) return;
+  const id  = btn.dataset.delId;
+  const b   = books.find(x=>x.id===id); if(!b) return;
+  confirmAction(`Delete "${b.title}"?`, 'This will permanently remove the book for all users.', async () => {
     try {
-      await txDelete('meta',id);
-      await txDelete('files','pdf_'+id);
-      await txDelete('files','cover_'+id);
-      books=books.filter(x=>x.id!==id);
-      buildFilters(); renderBooks(); renderManage();
-      showToast('✓ Book deleted');
-    } catch(err){ showToast('Delete failed: '+err.message,'error'); }
+      // Delete Firestore doc
+      await fbDb.collection('books').doc(id).delete();
+
+      // Delete Storage files (ignore errors if files missing)
+      const delFile = path => fbStorage.ref(path).delete().catch(()=>{});
+      await delFile(`books/${id}/book.pdf`);
+      if(b.coverUrl) {
+        // Extract path from URL
+        const ext = b.coverUrl.split('cover.')[1]?.split('?')[0] || 'jpg';
+        await delFile(`books/${id}/cover.${ext}`);
+      }
+      showToast('✓ Book deleted from library');
+    } catch(err) {
+      showToast('Delete failed: '+err.message, 'error');
+      console.error(err);
+    }
   });
 });
 
@@ -1679,39 +1753,68 @@ function confirmAction(title, msg, onOk) {
   openOverlay('confirm-overlay');
 }
 
-// ── Pinch-to-zoom (mobile) ──
+// ── Pinch-to-zoom (mobile) — live feedback via CSS transform ──
 (function() {
-  let initialDist = 0, initialZoom = 1;
   const area = document.getElementById('canvas-area');
+  const container = document.getElementById('pages-container');
+
+  let pinching    = false;
+  let startDist   = 0;
+  let startZoom   = 1;
+  let liveScale   = 1;   // CSS scale factor applied during pinch gesture
+
+  function getDist(t) {
+    return Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY);
+  }
 
   area.addEventListener('touchstart', e => {
-    if(e.touches.length === 2) {
-      initialDist = Math.hypot(
-        e.touches[0].clientX - e.touches[1].clientX,
-        e.touches[0].clientY - e.touches[1].clientY
-      );
-      initialZoom = zoomScale;
-      e.preventDefault();
+    if (e.touches.length === 2) {
+      pinching  = true;
+      startDist = getDist(e.touches);
+      startZoom = zoomScale;
+      liveScale = 1;
+      e.preventDefault();   // block browser's native zoom
     }
   }, { passive: false });
 
   area.addEventListener('touchmove', e => {
-    if(e.touches.length === 2 && initialDist > 0) {
-      const dist = Math.hypot(
-        e.touches[0].clientX - e.touches[1].clientX,
-        e.touches[0].clientY - e.touches[1].clientY
-      );
-      const newZoom = Math.max(0.4, Math.min(4, initialZoom * (dist / initialDist)));
-      zoomScale = +newZoom.toFixed(2);
-      document.getElementById('zoom-pct').textContent = Math.round(zoomScale*100)+'%';
-      e.preventDefault();
-    }
+    if (!pinching || e.touches.length < 2) return;
+    e.preventDefault();
+
+    const dist   = getDist(e.touches);
+    const ratio  = dist / startDist;
+    const newZ   = Math.max(0.4, Math.min(5, startZoom * ratio));
+
+    // Live visual feedback: scale the container with CSS transform
+    // so the user sees the zoom changing in real time
+    liveScale = newZ / startZoom;
+    container.style.transformOrigin = 'top center';
+    container.style.transform       = `scale(${liveScale})`;
+
+    // Update the zoom % display live
+    zoomScale = +newZ.toFixed(2);
+    document.getElementById('zoom-pct').textContent = Math.round(zoomScale * 100) + '%';
+
   }, { passive: false });
 
   area.addEventListener('touchend', async e => {
-    if(e.touches.length < 2 && initialDist > 0) {
-      initialDist = 0;
-      if(pdfDoc) await reRenderAllPages();
+    if (!pinching) return;
+    if (e.touches.length < 2) {
+      pinching = false;
+
+      // Remove CSS transform — pages container goes back to native size
+      container.style.transform = '';
+
+      // Now actually re-render every page at the new zoomScale
+      if (pdfDoc) await reRenderAllPages();
+    }
+  });
+
+  // Guard: if a touch is cancelled mid-pinch, clean up
+  area.addEventListener('touchcancel', () => {
+    if (pinching) {
+      pinching = false;
+      container.style.transform = '';
     }
   });
 })();
@@ -1775,19 +1878,22 @@ function showRandomQuote() {
 // ════════════════════════════════
 // INIT
 // ════════════════════════════════
-openDB()
-  .then(async ()=>{
-    // Apply saved theme
-    const savedTheme = localStorage.getItem('libra_theme');
-    applyTheme(savedTheme === 'dark');
-    showRandomQuote();
-    await loadBooks(); buildFilters(); renderBooks();
-  })
-  .catch(err=>{
-    document.getElementById('books-grid').innerHTML=`<div class="empty">
-      <div class="ei">⚠️</div><div class="et">Storage Error</div>
-      <div class="es">${err.message}. Please refresh.</div></div>`;
-  });
+(function() {
+  const savedTheme = localStorage.getItem('libra_theme');
+  applyTheme(savedTheme === 'dark');
+  showRandomQuote();
+  initFirebase();
+  if(fbConfigured) {
+    loadBooks(); // sets up real-time listener
+  } else {
+    // Show empty state with setup hint
+    document.getElementById('books-grid').innerHTML = `<div class="empty">
+      <div class="ei">⚙️</div>
+      <div class="et">Firebase Setup Required</div>
+      <div class="es">See the yellow banner above for instructions.</div>
+    </div>`;
+  }
+})();
 </script>
 </body>
 </html>
