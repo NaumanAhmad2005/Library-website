@@ -10,10 +10,8 @@
 <title>Shelf of Moiz</title>
 <link href="https://fonts.googleapis.com/css2?family=Lora:ital,wght@0,400;0,600;1,400&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
-<!-- Firebase SDK -->
-<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-storage-compat.js"></script>
+<!-- Supabase SDK (free, no credit card required) -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 <style>
 :root{
   --bg:#f7f6f3;--bg2:#ffffff;--bg3:#f0efe9;
@@ -666,10 +664,10 @@ input, select, textarea { font-size: 16px !important; } /* prevents iOS zoom on 
   </div>
 </div>
 
-<!-- Firebase setup notice (hidden once configured) -->
+<!-- Supabase setup notice (hidden once configured) -->
 <div id="setup-banner" style="display:none;background:#fff3cd;border-bottom:1px solid #ffc107;padding:0.75rem 2rem;font-size:0.82rem;color:#856404;text-align:center;">
-  ⚠️ <strong>Firebase not configured.</strong> Open the HTML file, find <code>PASTE_YOUR_FIREBASE_CONFIG_HERE</code> and replace it with your Firebase config.
-  <a href="https://console.firebase.google.com" target="_blank" style="color:#856404;font-weight:600;margin-left:0.5rem;">Open Firebase Console →</a>
+  ⚠️ <strong>Supabase not configured.</strong> See instructions inside the HTML file to connect your free database.
+  <a href="https://supabase.com" target="_blank" style="color:#856404;font-weight:600;margin-left:0.5rem;">Open Supabase →</a>
 </div>
 
 <!-- HERO -->
@@ -981,33 +979,44 @@ function getCreds() {
 function saveCreds(c) { localStorage.setItem('libra_creds', JSON.stringify(c)); }
 
 // ════════════════════════════════
-// FIREBASE CONFIG
-// To connect a real database, replace null below with your Firebase config object.
-// Get it from: Firebase Console → Project Settings → Your Apps → Web App
-// Example:
-// const FIREBASE_CONFIG = {
-//   apiKey: "AIzaSy...",
-//   authDomain: "your-project.firebaseapp.com",
-//   projectId: "your-project-id",
-//   storageBucket: "your-project.appspot.com",
-//   messagingSenderId: "123456789",
-//   appId: "1:123:web:abc"
-// };
+// SUPABASE CONFIG  (100% FREE — no credit card)
+// Steps to set up:
+//  1. Go to https://supabase.com → Sign Up (free)
+//  2. Create a new project (free tier)
+//  3. In SQL Editor, run this to create the books table:
+//     CREATE TABLE books (
+//       id TEXT PRIMARY KEY,
+//       title TEXT NOT NULL,
+//       author TEXT NOT NULL,
+//       genre TEXT,
+//       description TEXT,
+//       pdf_url TEXT,
+//       cover_url TEXT,
+//       added_at TIMESTAMPTZ DEFAULT NOW()
+//     );
+//     ALTER TABLE books ENABLE ROW LEVEL SECURITY;
+//     CREATE POLICY "Public read" ON books FOR SELECT USING (true);
+//     CREATE POLICY "Public insert" ON books FOR INSERT WITH CHECK (true);
+//     CREATE POLICY "Public delete" ON books FOR DELETE USING (true);
+//  4. Go to Storage → New bucket → name it "books" → check "Public bucket"
+//  5. Go to Project Settings → API → copy Project URL and anon key
+//  6. Paste them below replacing the null values
 // ════════════════════════════════
-const FIREBASE_CONFIG = null; // ← Replace null with your config object when ready
+const SUPABASE_URL  = "https://npxsclxjumvbcsxccttt.supabase.co";   /* ← Paste your Project URL here,  e.g.  https://xyzabc.supabase.co  */
+const SUPABASE_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5weHNjbHhqdW12YmNzeGNjdHR0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQwMjYyNTAsImV4cCI6MjA4OTYwMjI1MH0.JQOZ-zc45y2Mxbn9_rU4EUFG2POAhVCgbskPScnAUYY";   /* ← Paste your anon public key here */
 
-let fbApp, fbDb, fbStorage, fbConfigured = false;
+let sb = null;        // Supabase client
+let sbConfigured = false;
+let booksChannel  = null;
 
-function initFirebase() {
+function initSupabase() {
   try {
-    if(!FIREBASE_CONFIG || !FIREBASE_CONFIG.apiKey) throw new Error('Not configured');
-    fbApp     = firebase.initializeApp(FIREBASE_CONFIG);
-    fbDb      = firebase.firestore();
-    fbStorage = firebase.storage();
-    fbConfigured = true;
+    if(!SUPABASE_URL || !SUPABASE_ANON || SUPABASE_URL.trim()==='' || SUPABASE_ANON.trim()==='') throw new Error('Not configured');
+    sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
+    sbConfigured = true;
   } catch(e) {
     document.getElementById('setup-banner').style.display = 'block';
-    console.warn('Firebase not configured — running in offline mode:', e.message);
+    console.warn('Supabase not configured — running in offline mode');
   }
 }
 
@@ -1017,22 +1026,29 @@ function initFirebase() {
 let books = [], isAdmin = false, currentGenre = 'all';
 let pdfDoc = null, currentPage = 1, zoomScale = 1.3, renderTask = null;
 let activeBookId = null;
-let activePdfUrl = null;  // Firebase Storage URL for active book
-let booksListener = null; // Firestore real-time unsubscribe handle
+let activePdfUrl = null;
 
-// Real-time listener — updates books on ALL devices instantly
-function loadBooks() {
-  if(!fbConfigured) return;
-  if(booksListener) booksListener(); // unsubscribe previous
-  const q = fbDb.collection('books').orderBy('addedAt','desc');
-  booksListener = q.onSnapshot(snap => {
-    books = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-    buildFilters();
-    renderBooks();
-  }, err => {
-    console.error('Firestore error:', err);
-    showToast('Database error — check console', 'error');
-  });
+// Load books + subscribe to real-time updates
+async function loadBooks() {
+  if(!sbConfigured) return;
+
+  // Initial fetch
+  const { data, error } = await sb.from('books').select('*').order('added_at', { ascending: false });
+  if(error) { console.error('Supabase load error:', error); return; }
+  books = data || [];
+  buildFilters();
+  renderBooks();
+
+  // Real-time: auto-refresh whenever any device adds/deletes a book
+  if(booksChannel) booksChannel.unsubscribe();
+  booksChannel = sb.channel('books-changes')
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'books' }, async () => {
+      const { data: fresh } = await sb.from('books').select('*').order('added_at', { ascending: false });
+      books = fresh || [];
+      buildFilters();
+      renderBooks();
+    })
+    .subscribe();
 }
 
 // ════════════════════════════════
@@ -1093,8 +1109,8 @@ function renderBooks() {
     const manualPg = bm?.manualPage || null;
     return `<div class="book-card" data-read-id="${b.id}" style="animation-delay:${i*0.04}s">
       <div class="cover-wrap">
-        ${b.coverUrl
-          ? `<img src="${esc(b.coverUrl)}" alt="${esc(b.title)}" loading="lazy">`
+        ${b.cover_url
+          ? `<img src="${esc(b.cover_url)}" alt="${esc(b.title)}" loading="lazy">`
           : `<div class="cover-ph"><div class="icon">📖</div><div class="pt">${esc(b.title)}</div><div class="pa">${esc(b.author)}</div></div>`}
         ${i===0?'<span class="new-badge">New</span>':''}
         ${manualPg?`<span class="bm-badge" title="Bookmark: page ${manualPg}">🔖 p.${manualPg}</span>`:
@@ -1123,10 +1139,10 @@ document.getElementById('books-grid').addEventListener('click', e => {
 async function openReader(id) {
   const b = books.find(x=>x.id===id);
   if(!b) return;
-  if(!b.pdfUrl) { showToast('PDF not available', 'error'); return; }
+  if(!b.pdf_url) { showToast('PDF not available', 'error'); return; }
 
   activeBookId = id;
-  activePdfUrl = b.pdfUrl;
+  activePdfUrl = b.pdf_url;
   document.getElementById('r-title').textContent  = b.title;
   document.getElementById('r-author').textContent = b.author;
 
@@ -1580,7 +1596,7 @@ function switchTab(name, btn) {
 // UPLOAD
 // ════════════════════════════════
 async function doUpload() {
-  if(!fbConfigured) { showToast('Firebase not configured — see setup banner', 'error'); return; }
+  if(!sbConfigured) { showToast('Supabase not configured — see setup banner', 'error'); return; }
 
   const title    = document.getElementById('u-title').value.trim();
   const author   = document.getElementById('u-author').value.trim();
@@ -1597,61 +1613,58 @@ async function doUpload() {
     errEl.textContent='Please select a valid PDF file.'; errEl.style.display='block'; return;
   }
 
-  const btn     = document.getElementById('u-btn');
-  const progWrap= document.getElementById('upload-progress-wrap');
-  const progBar = document.getElementById('upload-progress-bar');
-  const progPct = document.getElementById('upload-pct');
-  const progTxt = document.getElementById('upload-status-text');
+  const btn      = document.getElementById('u-btn');
+  const progWrap = document.getElementById('upload-progress-wrap');
+  const progBar  = document.getElementById('upload-progress-bar');
+  const progPct  = document.getElementById('upload-pct');
+  const progTxt  = document.getElementById('upload-status-text');
 
   btn.disabled = true; btn.textContent = 'Uploading…';
   progWrap.style.display = 'block';
 
+  const setProgress = (pct, txt) => {
+    progBar.style.width = pct + '%';
+    progPct.textContent = pct + '%';
+    if(txt) progTxt.textContent = txt;
+  };
+
   try {
     const id = 'b' + Date.now().toString(36) + Math.random().toString(36).slice(2,5);
 
-    // 1. Upload PDF with progress
-    progTxt.textContent = 'Uploading PDF…';
-    const pdfRef  = fbStorage.ref(`books/${id}/book.pdf`);
-    const pdfTask = pdfRef.put(pdfFile, { contentType: 'application/pdf' });
+    // 1. Upload PDF to Supabase Storage
+    setProgress(5, 'Uploading PDF…');
+    const { error: pdfErr } = await sb.storage.from('books').upload(`${id}/book.pdf`, pdfFile, { contentType: 'application/pdf', upsert: false });
+    if(pdfErr) throw pdfErr;
+    setProgress(75, 'PDF uploaded…');
 
-    const pdfUrl = await new Promise((res, rej) => {
-      pdfTask.on('state_changed',
-        snap => {
-          const pct = Math.round((snap.bytesTransferred / snap.totalBytes) * 80);
-          progBar.style.width = pct + '%';
-          progPct.textContent = pct + '%';
-        },
-        err => rej(err),
-        async () => res(await pdfTask.snapshot.ref.getDownloadURL())
-      );
-    });
+    const { data: pdfData } = sb.storage.from('books').getPublicUrl(`${id}/book.pdf`);
+    const pdfUrl = pdfData.publicUrl;
 
-    // 2. Upload cover (if provided)
+    // 2. Upload cover if provided
     let coverUrl = null;
     if(coverFile) {
-      progTxt.textContent = 'Uploading cover…';
-      progBar.style.width = '82%'; progPct.textContent = '82%';
-      const ext      = coverFile.name.split('.').pop();
-      const coverRef = fbStorage.ref(`books/${id}/cover.${ext}`);
-      await coverRef.put(coverFile, { contentType: coverFile.type });
-      coverUrl = await coverRef.getDownloadURL();
+      setProgress(80, 'Uploading cover…');
+      const ext = coverFile.name.split('.').pop().toLowerCase() || 'jpg';
+      const { error: covErr } = await sb.storage.from('books').upload(`${id}/cover.${ext}`, coverFile, { contentType: coverFile.type, upsert: false });
+      if(!covErr) {
+        const { data: covData } = sb.storage.from('books').getPublicUrl(`${id}/cover.${ext}`);
+        coverUrl = covData.publicUrl;
+      }
     }
 
-    progBar.style.width = '92%'; progPct.textContent = '92%';
-    progTxt.textContent = 'Saving to database…';
+    setProgress(92, 'Saving to database…');
 
-    // 3. Save metadata to Firestore
-    await fbDb.collection('books').doc(id).set({
-      title, author, genre,
+    // 3. Insert metadata row into Supabase table
+    const { error: dbErr } = await sb.from('books').insert({
+      id, title, author, genre,
       description: desc,
-      pdfUrl,
-      coverUrl,
-      hasCover: !!coverUrl,
-      addedAt: firebase.firestore.FieldValue.serverTimestamp()
+      pdf_url:   pdfUrl,
+      cover_url: coverUrl,
+      added_at:  new Date().toISOString()
     });
+    if(dbErr) throw dbErr;
 
-    progBar.style.width = '100%'; progPct.textContent = '100%';
-    progTxt.textContent = 'Done!';
+    setProgress(100, 'Done!');
 
     // Reset form
     ['u-title','u-author','u-desc'].forEach(x => document.getElementById(x).value='');
@@ -1660,10 +1673,10 @@ async function doUpload() {
     document.getElementById('u-cover').value=''; document.getElementById('cover-lbl').textContent='';
 
     showToast('✓ Book added — visible to all users now!', 'success');
-    setTimeout(()=>{ progWrap.style.display='none'; progBar.style.width='0%'; }, 2000);
+    setTimeout(()=>{ progWrap.style.display='none'; progBar.style.width='0%'; }, 2500);
 
   } catch(err) {
-    errEl.textContent = 'Upload failed: ' + err.message;
+    errEl.textContent = 'Upload failed: ' + (err.message || JSON.stringify(err));
     errEl.style.display = 'block';
     progWrap.style.display = 'none';
     progBar.style.width = '0%';
@@ -1684,8 +1697,8 @@ function renderManage() {
   }
   list.innerHTML = books.map(b => `
     <div class="mgmt-item">
-      ${b.coverUrl
-        ? `<img class="mgmt-thumb" src="${esc(b.coverUrl)}" alt="" loading="lazy">`
+      ${b.cover_url
+        ? `<img class="mgmt-thumb" src="${esc(b.cover_url)}" alt="" loading="lazy">`
         : `<div class="mgmt-ph">📖</div>`}
       <div class="mgmt-info">
         <div class="mgmt-title" title="${esc(b.title)}">${esc(b.title)}</div>
@@ -1701,16 +1714,15 @@ document.getElementById('mgmt-list').addEventListener('click', e=>{
   const b   = books.find(x=>x.id===id); if(!b) return;
   confirmAction(`Delete "${b.title}"?`, 'This will permanently remove the book for all users.', async () => {
     try {
-      // Delete Firestore doc
-      await fbDb.collection('books').doc(id).delete();
+      // Delete from Supabase table
+      const { error: dbErr } = await sb.from('books').delete().eq('id', id);
+      if(dbErr) throw dbErr;
 
-      // Delete Storage files (ignore errors if files missing)
-      const delFile = path => fbStorage.ref(path).delete().catch(()=>{});
-      await delFile(`books/${id}/book.pdf`);
-      if(b.coverUrl) {
-        // Extract path from URL
-        const ext = b.coverUrl.split('cover.')[1]?.split('?')[0] || 'jpg';
-        await delFile(`books/${id}/cover.${ext}`);
+      // Delete storage files (ignore errors if already missing)
+      await sb.storage.from('books').remove([`${id}/book.pdf`]).catch(()=>{});
+      if(b.cover_url) {
+        const ext = b.cover_url.split('/').pop().split('?')[0].split('.').pop() || 'jpg';
+        await sb.storage.from('books').remove([`${id}/cover.${ext}`]).catch(()=>{});
       }
       showToast('✓ Book deleted from library');
     } catch(err) {
@@ -1910,15 +1922,14 @@ function showRandomQuote() {
   const savedTheme = localStorage.getItem('libra_theme');
   applyTheme(savedTheme === 'dark');
   showRandomQuote();
-  initFirebase();
-  if(fbConfigured) {
-    loadBooks(); // sets up real-time listener
+  initSupabase();
+  if(sbConfigured) {
+    loadBooks();
   } else {
-    // Show empty state with setup hint
     document.getElementById('books-grid').innerHTML = `<div class="empty">
       <div class="ei">⚙️</div>
-      <div class="et">Firebase Setup Required</div>
-      <div class="es">See the yellow banner above for instructions.</div>
+      <div class="et">Database Setup Required</div>
+      <div class="es">See the yellow banner above for Supabase setup instructions (free, no credit card).</div>
     </div>`;
   }
 })();
