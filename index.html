@@ -1163,7 +1163,7 @@ async function openReader(id) {
   try {
     // Fetch PDF bytes from Firebase Storage URL
     loading.innerHTML = '<div class="spin"></div><span>Downloading PDF…</span>';
-    const resp = await fetch(b.pdfUrl);
+    const resp = await fetch(b.pdf_url);
     if(!resp.ok) throw new Error(`Network error ${resp.status}`);
     const buffer = await resp.arrayBuffer();
 
