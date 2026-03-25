@@ -118,8 +118,6 @@ Username: admin
 Password: library123
 ```
 
-> ⚠️ Change these immediately after first login via **Admin Panel → My Account → Change Password**
-
 ---
 
 ## 📱 Mobile Support
@@ -140,17 +138,6 @@ shelf-of-moiz/
 ├── index.html       # The entire app — HTML + CSS + JS in one file
 └── README.md        # This file
 ```
-
----
-
-## 🗺️ Roadmap / Possible Future Features
-
-- [ ] Multiple admin accounts
-- [ ] Book descriptions shown in a detail modal
-- [ ] Reading progress percentage on book cards
-- [ ] Sort books by date, title, or author
-- [ ] Featured / pinned books section
-- [ ] PWA support (installable as an app)
 
 ---
 
