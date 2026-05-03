@@ -13,6 +13,23 @@ export default function Reader() {
     fetchBook();
   }, [id]);
 
+  useEffect(() => {
+    if (!book) return;
+    const originalTitle = document.title;
+    document.title = `${book.title} – Shelf of Moiz`;
+    
+    const metaDesc = document.querySelector('meta[name="description"]');
+    const originalDesc = metaDesc ? metaDesc.getAttribute('content') : '';
+    if (metaDesc) {
+      metaDesc.setAttribute('content', `Read ${book.title} online on Shelf of Moiz, a personal library website.`);
+    }
+
+    return () => {
+      document.title = originalTitle;
+      if (metaDesc) metaDesc.setAttribute('content', originalDesc);
+    };
+  }, [book]);
+
   const fetchBook = async () => {
     try {
       const { data, error } = await supabase.from('books').select('*').eq('id', id).single();
