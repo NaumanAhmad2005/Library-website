@@ -57,9 +57,17 @@ export default function Reader() {
       setNumPages(doc.numPages);
       setLoading(false);
       
+      const page = await doc.getPage(1);
+      const viewport = page.getViewport({ scale: 1 });
+      const availWidth = areaRef.current ? areaRef.current.clientWidth : window.innerWidth;
+      
+      let initialScale = availWidth / viewport.width;
+      initialScale = Math.max(0.4, Math.min(5, +initialScale.toFixed(2)));
+      setZoomScale(initialScale);
+      
       // Delay to let DOM elements mount
       setTimeout(() => {
-        renderAllPages(doc, 1.3);
+        renderAllPages(doc, initialScale);
         setupScrollTracking();
       }, 50);
     } catch(err) {
@@ -106,17 +114,12 @@ export default function Reader() {
       wrap.className = 'page-wrap';
       wrap.dataset.page = i;
       
-      const lbl = document.createElement('div');
-      lbl.className = 'page-num-lbl';
-      lbl.textContent = `— ${i} —`;
-      
       const canvas = document.createElement('canvas');
       canvas.className = 'page-canvas';
       canvas._pageNum = i;
       canvas._rendered = false;
       
       wrap.appendChild(canvas);
-      wrap.appendChild(lbl);
       containerRef.current.appendChild(wrap);
     }
     

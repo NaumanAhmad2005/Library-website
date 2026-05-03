@@ -273,8 +273,8 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);min
   display:flex;
   flex-direction:column;
   align-items:center;
-  gap:16px;
-  padding:1.5rem 1.5rem 3rem;
+  gap:0px;
+  padding:0;
   width:max-content;      /* expands to hold wide canvases when zoomed in */
   min-width:100%;
 }
@@ -581,10 +581,10 @@ input, select, textarea { font-size: 16px !important; } /* prevents iOS zoom on 
   .icon-btn span { display: none; }
   .icon-btn { padding: 0 0.55rem; height: 36px; font-size: 1rem; }
 
-  /* Bigger tap area for gauge */
-  .scroll-gauge { width: 36px; }
-  .gauge-track { width: 14px; }
-  .gauge-thumb { width: 14px; height: 36px; }
+  /* Bigger tap area for gauge - now hidden to remove side scroll bar */
+  .scroll-gauge { display: none; }
+  .canvas-area::-webkit-scrollbar { display: none; }
+  .canvas-area { -ms-overflow-style: none; scrollbar-width: none; }
 
   /* Reader footer — two rows on small screens */
   .reader-foot {
