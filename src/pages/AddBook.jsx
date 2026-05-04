@@ -99,7 +99,7 @@ export default function AddBook() {
           <option>Fiction</option><option>Non-Fiction</option><option>Science</option>
           <option>History</option><option>Philosophy</option><option>Poetry</option>
           <option>Mystery</option><option>Biography</option><option>Religion</option>
-          <option>Technology</option><option>Children</option><option>Other</option>
+          <option>Technology</option><option>Children</option><option>Law</option><option>Other</option>
         </select>
       </div>
       <div className="field"><label>Description</label><textarea placeholder="Short description…" value={desc} onChange={e => setDesc(e.target.value)}></textarea></div>

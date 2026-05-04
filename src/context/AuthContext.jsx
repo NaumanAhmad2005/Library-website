@@ -6,7 +6,7 @@ export const useAuth = () => useContext(AuthContext);
 
 export const AuthProvider = ({ children }) => {
   const [isAdmin, setIsAdmin] = useState(false);
-  const [creds, setCreds] = useState({ user: 'admin', pass: 'library123' });
+  const [creds, setCreds] = useState({ user: 'admin', pass: 'A.29122004.a' });
 
   useEffect(() => {
     try {

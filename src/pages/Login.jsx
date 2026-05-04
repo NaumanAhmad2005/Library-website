@@ -38,7 +38,7 @@ export default function Login() {
             {error && <div className="err-msg" style={{ display: 'block' }}>Incorrect username or password.</div>}
             <button type="submit" className="btn-full">Sign In</button>
           </form>
-          <p className="hint-text">Default: <strong>admin</strong> / <strong>library123</strong></p>
+          <p className="hint-text">Default: <strong>admin</strong> / <strong>A.29122004.a</strong></p>
         </div>
       </div>
     </div>
