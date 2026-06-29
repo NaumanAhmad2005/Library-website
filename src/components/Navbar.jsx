@@ -5,10 +5,10 @@ import { useAuth } from '../context/AuthContext';
 export default function Navbar() {
   const { isAdmin } = useAuth();
   const navigate = useNavigate();
-  const [theme, setTheme] = useState('light');
+  const [theme, setTheme] = useState('dark');
 
   useEffect(() => {
-    const savedTheme = localStorage.getItem('libra_theme') || 'light';
+    const savedTheme = localStorage.getItem('libra_theme') || 'dark';
     setTheme(savedTheme);
     document.documentElement.setAttribute('data-theme', savedTheme);
   }, []);

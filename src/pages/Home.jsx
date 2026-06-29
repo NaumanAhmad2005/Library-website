@@ -115,7 +115,7 @@ export default function Home() {
                   <div className="card-title">{b.title}</div>
                   <div className="card-author">{b.author}</div>
                   {b.genre && <span className="card-genre">{b.genre}</span>}
-                  <div className="card-read-hint">{bm?.lastPage ? '▶ Continue Reading' : '▶ Read Now'}</div>
+                  <div className="card-read-hint">Open Book</div>
                 </div>
               </div>
             );
